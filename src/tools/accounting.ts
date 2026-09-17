@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { encodePath, type PowerOfficeClient } from "../api/client.js";
-import { json, query, requireConfirm } from "../utils/safety.js";
+import { json, jsonList, query, requireConfirm } from "../utils/safety.js";
 
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
 
@@ -83,7 +83,7 @@ export function registerAccountingTools(server: McpServer, client: PowerOfficeCl
       ...paging,
     },
     async (a) =>
-      json(
+      jsonList(
         await client.get<unknown>(
           "/GeneralLedgerAccounts",
           query({ accountNos: a.accountNos, PageNumber: a.pageNumber, PageSize: a.pageSize })
@@ -209,6 +209,6 @@ export function registerAccountingTools(server: McpServer, client: PowerOfficeCl
     "list_sub_ledger_number_series",
     "Sub-ledger number series (customer/supplier number ranges) configured on the client.",
     {},
-    async () => json(await client.get<unknown>("/SubLedgerNumberSeries"))
+    async () => jsonList(await client.get<unknown>("/SubLedgerNumberSeries"))
   );
 }

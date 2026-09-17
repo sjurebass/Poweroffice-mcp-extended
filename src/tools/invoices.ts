@@ -1,7 +1,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { PowerOfficeClient, encodePath } from "../api/client.js";
-import type { SalesOrder } from "../api/types.js";
+import type { SalesOrder, SalesOrderStatus } from "../api/types.js";
+import { query } from "../utils/safety.js";
+
+// The tools take lowercase status names; the API enum is capitalised.
+const ORDER_STATUS: Record<"draft" | "confirmed", SalesOrderStatus> = {
+  draft: "Draft",
+  confirmed: "Confirmed",
+};
 
 // PowerOffice sales-order line types. Only "Normal" is exposed here; other
 // types (Text/Summary/InvoiceFee/TotalHours) would require additional
@@ -50,16 +57,18 @@ const SalesOrderLineSchema = z.object({
 export function registerInvoiceTools(server: McpServer, client: PowerOfficeClient) {
   server.tool(
     "list_invoices",
-    "List sales orders (invoices) from PowerOffice Go in a given date range. Both fromDate and toDate are required by the upstream API. Results are paginated client-side and may be filtered by status.",
+    "List sales orders (invoices) from PowerOffice Go. Status is filtered by the API; the optional date range and the paging are applied here, after fetching, because GET /SalesOrders offers neither.",
     {
       fromDate: z
         .string()
         .regex(/^\d{4}-\d{2}-\d{2}$/)
-        .describe("Required. Earliest order date (YYYY-MM-DD)"),
+        .optional()
+        .describe("Earliest SalesOrderDate (YYYY-MM-DD). Filtered client-side."),
       toDate: z
         .string()
         .regex(/^\d{4}-\d{2}-\d{2}$/)
-        .describe("Required. Latest order date (YYYY-MM-DD)"),
+        .optional()
+        .describe("Latest SalesOrderDate (YYYY-MM-DD). Filtered client-side."),
       page: z.number().int().min(1).default(1).describe("Page number (1-indexed)"),
       pageSize: z.number().int().min(1).max(100).default(25).describe("Results per page"),
       status: z
@@ -68,15 +77,21 @@ export function registerInvoiceTools(server: McpServer, client: PowerOfficeClien
         .describe("Filter by sales order status"),
     },
     async ({ page, pageSize, status, fromDate, toDate }) => {
-      const response = await client.get<SalesOrder[] | undefined>("/SalesOrders", {
-        fromDate,
-        toDate,
-      });
+      // GET /SalesOrders takes orderStatus, but has no date parameters at all —
+      // passing any rejects the whole request with 400. Dates are therefore
+      // matched here against SalesOrderDate, which the API serialises as
+      // YYYY-MM-DD, so plain string comparison is ordering-correct.
+      const response = await client.get<SalesOrder[] | undefined>(
+        "/SalesOrders",
+        query({ orderStatus: status === "all" ? undefined : ORDER_STATUS[status] })
+      );
 
       const all: SalesOrder[] = Array.isArray(response) ? response : [];
-      const wanted =
-        status === "draft" ? "Draft" : status === "confirmed" ? "Confirmed" : null;
-      const filtered = wanted === null ? all : all.filter((o) => o.SalesOrderStatus === wanted);
+      const filtered = all.filter(
+        (o) =>
+          (fromDate === undefined || (o.SalesOrderDate ?? "") >= fromDate) &&
+          (toDate === undefined || (o.SalesOrderDate ?? "") <= toDate)
+      );
 
       const start = (page - 1) * pageSize;
       return {

@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { encodePath, type PowerOfficeClient } from "../api/client.js";
-import { json, query, requireConfirm } from "../utils/safety.js";
+import { json, jsonList, query, requireConfirm } from "../utils/safety.js";
 
 /**
  * Payroll.
@@ -33,7 +33,7 @@ export function registerPayrollTools(server: McpServer, client: PowerOfficeClien
       ...paging,
     },
     async (a) =>
-      json(
+      jsonList(
         await client.get<unknown>(
           "/PayItems",
           query({
@@ -70,7 +70,7 @@ export function registerPayrollTools(server: McpServer, client: PowerOfficeClien
     "List salary lines (lønnslinjer) registered on the client.",
     { ...paging },
     async (a) =>
-      json(
+      jsonList(
         await client.get<unknown>(
           "/SalaryLines",
           query({ PageNumber: a.pageNumber, PageSize: a.pageSize })

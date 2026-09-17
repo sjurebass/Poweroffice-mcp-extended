@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { readFileSync } from "node:fs";
 import { encodePath, type PowerOfficeClient } from "../api/client.js";
-import { json, query, requireConfirm } from "../utils/safety.js";
+import { json, jsonList, query, requireConfirm } from "../utils/safety.js";
 
 /**
  * Voucher approval and documentation.
@@ -21,7 +21,7 @@ export function registerVoucherApprovalTools(server: McpServer, client: PowerOff
       pageSize: z.number().int().positive().max(1000).optional(),
     },
     async (a) =>
-      json(
+      jsonList(
         await client.get<unknown>(
           "/VoucherApproval",
           query({ PageNumber: a.pageNumber, PageSize: a.pageSize })
@@ -59,7 +59,7 @@ export function registerVoucherApprovalTools(server: McpServer, client: PowerOff
       pageSize: z.number().int().positive().max(1000).optional(),
     },
     async (a) =>
-      json(
+      jsonList(
         await client.get<unknown>(
           "/VoucherDocumentation",
           query({

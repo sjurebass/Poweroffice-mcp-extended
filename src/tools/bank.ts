@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { encodePath, type PowerOfficeClient } from "../api/client.js";
-import { json, query } from "../utils/safety.js";
+import { json, jsonList, query } from "../utils/safety.js";
 
 /**
  * Bank — READ ONLY, deliberately.
@@ -25,7 +25,7 @@ export function registerBankTools(server: McpServer, client: PowerOfficeClient) 
     "Bank accounts registered on the client. Read-only.",
     { bankAccountNumbers: z.array(z.string()).optional(), ...paging },
     async (a) =>
-      json(
+      jsonList(
         await client.get<unknown>(
           "/ClientBankAccounts",
           query({
@@ -48,7 +48,7 @@ export function registerBankTools(server: McpServer, client: PowerOfficeClient) 
     "list_bank_approvers",
     "List the bank approvers configured on the client. Read-only.",
     {},
-    async () => json(await client.get<unknown>("/ClientBankAccounts/BankApprovers"))
+    async () => jsonList(await client.get<unknown>("/ClientBankAccounts/BankApprovers"))
   );
 
   server.tool(
@@ -56,7 +56,7 @@ export function registerBankTools(server: McpServer, client: PowerOfficeClient) 
     "List bank transfers (betalinger) and their status. Read-only — this server cannot create or cancel a transfer.",
     { changedSince: z.string().optional().describe("ISO 8601 timestamp"), ...paging },
     async (a) =>
-      json(
+      jsonList(
         await client.get<unknown>(
           "/BankTransfers",
           query({

@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { encodePath, type PowerOfficeClient } from "../api/client.js";
-import { json, query, requireConfirm } from "../utils/safety.js";
+import { json, jsonList, query, requireConfirm } from "../utils/safety.js";
 
 /**
  * Suppliers, supplier ledger and incoming invoices.
@@ -30,7 +30,7 @@ export function registerSupplierTools(server: McpServer, client: PowerOfficeClie
       ...paging,
     },
     async (a) =>
-      json(
+      jsonList(
         await client.get<unknown>(
           "/Suppliers",
           query({
@@ -130,7 +130,7 @@ export function registerSupplierTools(server: McpServer, client: PowerOfficeClie
     "list_supplier_payment_terms",
     "List supplier payment terms (betalingsbetingelser) configured on the client.",
     {},
-    async () => json(await client.get<unknown>("/PaymentTermSuppliers"))
+    async () => jsonList(await client.get<unknown>("/PaymentTermSuppliers"))
   );
 
   server.tool(
@@ -146,7 +146,7 @@ export function registerSupplierTools(server: McpServer, client: PowerOfficeClie
       ...paging,
     },
     async (a) =>
-      json(
+      jsonList(
         await client.get<unknown>(
           "/IncomingInvoices",
           query({
