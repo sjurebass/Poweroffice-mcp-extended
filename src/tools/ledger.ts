@@ -1,93 +1,124 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { PowerOfficeClient } from "../api/client.js";
+import { json, query } from "../utils/safety.js";
+
+/**
+ * Customer ledger (kundereskontro) — the mirror of the supplier ledger in
+ * suppliers.ts, and it follows the same shape.
+ *
+ * Every /Customerledger endpoint takes a mandatory as-of date: a balance or an
+ * open item only means anything at a point in time. Omitting it does not
+ * default to today — the request 404s.
+ */
+
+const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
+
+const paging = {
+  pageNumber: z.number().int().positive().optional(),
+  pageSize: z.number().int().positive().max(1000).optional(),
+};
 
 export function registerLedgerTools(server: McpServer, client: PowerOfficeClient) {
   server.tool(
     "get_customer_balances",
-    "Get outstanding balances per customer (customer ledger). Answers: who owes us money?",
+    "Kundereskontro: what each customer owes us as of a date. Answers: who owes us money?",
     {
-      customerId: z
-        .number()
-        .int()
-        .positive()
+      date: DATE.describe("Balance date, inclusive"),
+      customerIds: z
+        .array(z.number().int().positive())
         .optional()
-        .describe("Filter to a single customer"),
-      onlyNonZero: z.boolean().default(true).describe("Hide customers with zero balance"),
+        .describe("Limit to these customer IDs"),
+      includeOnlyOpenItems: z
+        .boolean()
+        .optional()
+        .describe("Count only unmatched entries towards the balance"),
+      onlyNonZero: z
+        .boolean()
+        .default(true)
+        .describe("Drop customers whose balance is zero. Applied to the returned page."),
+      ...paging,
     },
-    async ({ customerId, onlyNonZero }) => {
-      const all = (await client.get<any[]>("/Customerledger/CustomerBalances")) ?? [];
-      let filtered = all;
-      if (customerId !== undefined) filtered = filtered.filter((b) => b.CustomerId === customerId);
-      if (onlyNonZero) filtered = filtered.filter((b) => (b.Balance ?? 0) !== 0);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({ count: filtered.length, data: filtered }, null, 2),
-          },
-        ],
-      };
+    async (a) => {
+      const all =
+        (await client.get<any[]>(
+          "/Customerledger/CustomerBalances",
+          query({
+            date: a.date,
+            customerIds: a.customerIds,
+            includeOnlyOpenItems: a.includeOnlyOpenItems,
+            PageNumber: a.pageNumber,
+            PageSize: a.pageSize,
+          })
+        )) ?? [];
+      const data = a.onlyNonZero ? all.filter((b) => (b.Balance ?? 0) !== 0) : all;
+      return json({ count: data.length, data });
     }
   );
 
   server.tool(
     "get_open_items",
-    "Get unpaid/unmatched ledger items (open items) — individual invoices not yet paid.",
+    "Unpaid customer invoices (åpne poster) as of a date — what is still outstanding.",
     {
-      customerId: z
-        .number()
-        .int()
-        .positive()
+      date: DATE.describe("As-of date, inclusive"),
+      customerNos: z
+        .array(z.number().int())
         .optional()
-        .describe("Filter to a single customer"),
-      onlyOverdue: z.boolean().default(false).describe("Only return items past their due date"),
+        .describe("Limit to these customer numbers (not IDs)"),
+      invoiceNos: z.array(z.string()).optional().describe("Limit to these invoice numbers"),
+      onlyOverdue: z
+        .boolean()
+        .default(false)
+        .describe("Keep only items past their due date. Applied to the returned page."),
+      ...paging,
     },
-    async ({ customerId, onlyOverdue }) => {
-      const all = (await client.get<any[]>("/Customerledger/OpenItems")) ?? [];
-      let filtered = all;
-      if (customerId !== undefined) filtered = filtered.filter((i) => i.CustomerId === customerId);
-      if (onlyOverdue) {
-        // PowerOffice serialises DueDate as a YYYY-MM-DD string, so a plain
-        // string comparison against today's ISO date is correct.
-        const today = new Date().toISOString().split("T")[0];
-        filtered = filtered.filter((i) => i.DueDate && i.DueDate < today);
-      }
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({ count: filtered.length, data: filtered }, null, 2),
-          },
-        ],
-      };
+    async (a) => {
+      const all =
+        (await client.get<any[]>(
+          "/Customerledger/OpenItems",
+          query({
+            date: a.date,
+            customerNos: a.customerNos,
+            invoiceNos: a.invoiceNos,
+            PageNumber: a.pageNumber,
+            PageSize: a.pageSize,
+          })
+        )) ?? [];
+      // Overdue is relative to the as-of date, not to today — asking for open
+      // items at year-end should not mark them overdue just because that date
+      // has since passed. DueDate is a YYYY-MM-DD string, so comparing the
+      // strings orders them correctly.
+      const data = a.onlyOverdue ? all.filter((i) => i.DueDate && i.DueDate < a.date) : all;
+      return json({ count: data.length, data });
     }
   );
 
   server.tool(
     "get_customer_statement",
-    "Get a full ledger statement for a customer (all entries, paid and unpaid).",
+    "Full customer ledger statement between two dates (all entries, paid and unpaid).",
     {
-      customerId: z.number().int().positive().describe("The customer ID"),
-      fromDate: z
-        .string()
-        .regex(/^\d{4}-\d{2}-\d{2}$/)
+      fromDate: DATE.describe("Start date, inclusive"),
+      toDate: DATE.describe("End date, inclusive"),
+      customerNos: z
+        .array(z.number().int())
         .optional()
-        .describe("Start date (YYYY-MM-DD)"),
-      toDate: z
-        .string()
-        .regex(/^\d{4}-\d{2}-\d{2}$/)
-        .optional()
-        .describe("End date (YYYY-MM-DD)"),
+        .describe("Limit to these customer numbers (not IDs)"),
+      invoiceNos: z.array(z.string()).optional().describe("Limit to these invoice numbers"),
+      ...paging,
     },
-    async ({ customerId, fromDate, toDate }) => {
-      const params: Record<string, string> = { customerId: String(customerId) };
-      if (fromDate) params.fromDate = fromDate;
-      if (toDate) params.toDate = toDate;
-      const result = await client.get<unknown>("/Customerledger/Statement", params);
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-      };
-    }
+    async (a) =>
+      json(
+        (await client.get<unknown>(
+          "/Customerledger/Statement",
+          query({
+            fromDate: a.fromDate,
+            toDate: a.toDate,
+            customerNos: a.customerNos,
+            invoiceNos: a.invoiceNos,
+            PageNumber: a.pageNumber,
+            PageSize: a.pageSize,
+          })
+        )) ?? []
+      )
   );
 }

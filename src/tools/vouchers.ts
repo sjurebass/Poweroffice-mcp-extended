@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { readFileSync } from "node:fs";
 import { encodePath, type PowerOfficeClient } from "../api/client.js";
-import { json, query, requireConfirm } from "../utils/safety.js";
+import { json, jsonList, query, requireConfirm } from "../utils/safety.js";
 
 /**
  * Journal entry voucher DRAFTS (bilagsutkast).
@@ -95,7 +95,7 @@ export function registerVoucherTools(server: McpServer, client: PowerOfficeClien
       pageSize: z.number().int().positive().max(1000).optional(),
     },
     async (a) =>
-      json(
+      jsonList(
         await client.get<unknown>(
           "/JournalEntryVouchers",
           query({

@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { encodePath, type PowerOfficeClient } from "../api/client.js";
-import { json, query } from "../utils/safety.js";
+import { json, jsonList, query } from "../utils/safety.js";
 import type { ClientRegistry } from "../api/registry.js";
 import { NOT_EXPOSED_BY_DESIGN } from "../utils/safety.js";
 
@@ -49,7 +49,7 @@ export function registerClientTools(
       pageSize: z.number().int().positive().max(1000).optional(),
     },
     async (a) =>
-      json(
+      jsonList(
         await client.get<unknown>(
           "/ClientAdmin/Clients",
           query({ PageNumber: a.pageNumber, PageSize: a.pageSize })

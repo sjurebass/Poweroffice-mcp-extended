@@ -33,11 +33,28 @@ export function requireConfirm(confirm: boolean | undefined, action: string): vo
   }
 }
 
-/** Standard MCP text result carrying a JSON payload. */
+/**
+ * Standard MCP text result carrying a JSON payload.
+ *
+ * The Go API answers an empty result with 204 No Content, which the client
+ * surfaces as `undefined`. `JSON.stringify(undefined)` is `undefined`, not a
+ * string, and an MCP text block with no text fails the SDK's output schema —
+ * so the caller sees a protocol error instead of "nothing here". Coalescing to
+ * `null` keeps that case a well-formed, if empty, answer.
+ */
 export function json(data: unknown) {
   return {
-    content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+    content: [{ type: "text" as const, text: JSON.stringify(data ?? null, null, 2) }],
   };
+}
+
+/**
+ * Like {@link json}, for endpoints that return a collection. An absent body
+ * (HTTP 204) means the collection is empty, so it renders as `[]` rather than
+ * `null` — callers filtering or counting the result get something iterable.
+ */
+export function jsonList(data: unknown) {
+  return json(data ?? []);
 }
 
 /**

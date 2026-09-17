@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { encodePath, type PowerOfficeClient } from "../api/client.js";
-import { json, query, requireConfirm } from "../utils/safety.js";
+import { json, jsonList, query, requireConfirm } from "../utils/safety.js";
 
 /**
  * Time tracking (timeføring).
@@ -49,7 +49,7 @@ export function registerTimeTrackingTools(server: McpServer, client: PowerOffice
       ...paging,
     },
     async (a) =>
-      json(
+      jsonList(
         await client.get<unknown>(
           encodePath`/TimeTracking/${KINDS[a.kind]}`,
           query({
@@ -169,7 +169,7 @@ export function registerTimeTrackingTools(server: McpServer, client: PowerOffice
     "Timearter: hour types configured on the client (id 0 is the synthetic 'Regular hours').",
     { ...paging },
     async (a) =>
-      json(
+      jsonList(
         await client.get<unknown>(
           "/TimeTracking/HourType",
           query({ PageNumber: a.pageNumber, PageSize: a.pageSize })
@@ -187,7 +187,7 @@ export function registerTimeTrackingTools(server: McpServer, client: PowerOffice
       ...paging,
     },
     async (a) =>
-      json(
+      jsonList(
         await client.get<unknown>(
           "/TimeTransactions",
           query({
