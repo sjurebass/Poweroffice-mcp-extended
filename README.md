@@ -246,7 +246,7 @@ npm test
 
 Tests cover the rate limiter, the audit log, the JSON-Patch body conversion, the URL-encoding helper, and the invoice validator. The full test suite runs on every push and pull request via [GitHub Actions](./.github/workflows/ci.yml), along with `npm audit`, `tsc`, and the `npm run build` step.
 
-[GitHub CodeQL](./.github/workflows/codeql.yml) runs the `security-and-quality` query suite on every push, every PR, and on a weekly cron — so a vulnerability disclosed after a release will surface on the next scan even without a new commit.
+CodeQL static analysis was removed in favour of leaving CI meaningful: code scanning needs GitHub Code Security on a private repository, so the workflow analysed the source and then failed on the upload, every run. A check that is always red hides the ones that are newly red. Turn code scanning on — or make the repository public — and the workflow is worth restoring; it is in the history at `.github/workflows/codeql.yml`.
 
 [Dependabot](./.github/dependabot.yml) opens weekly PRs for npm updates and monthly PRs for GitHub Actions updates.
 

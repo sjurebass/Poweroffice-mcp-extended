@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+- CodeQL workflow. Code scanning requires GitHub Code Security on a private
+  repository, so every run analysed the source and then failed on the upload.
+  Restore it alongside code scanning, or if the repository becomes public.
+
 ## [0.3.0] — 2026-05-27
 
 Pre-event security and quality review pass ahead of public inspection at
