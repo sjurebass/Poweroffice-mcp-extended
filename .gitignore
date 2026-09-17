@@ -16,3 +16,6 @@ dist/
 
 # Audit log (per-machine, not source-controlled)
 audit.log
+
+# Local launcher scripts (machine-specific, keep out of the repo)
+run.sh

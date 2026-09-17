@@ -1,11 +1,37 @@
-# PowerOffice Go MCP Server
+# PowerOffice Go MCP — utvidet fork
 
-[![CI](https://github.com/smplas/poweroffice-go-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/smplas/poweroffice-go-mcp/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/smplas/poweroffice-go-mcp/actions/workflows/codeql.yml/badge.svg)](https://github.com/smplas/poweroffice-go-mcp/actions/workflows/codeql.yml)
+> **Dette er en fork.** Originalen er
+> [smplas/poweroffice-go-mcp](https://github.com/smplas/poweroffice-go-mcp),
+> bygget av [SmplCo](https://smpl.no/) til en demonstrasjon på Tech-Forum
+> Stavanger. MIT-lisensiert, opphavsrett SmplCo AS — se [LICENSE](./LICENSE).
+> Denne forken er til **internt bruk**, ikke et kommersielt produkt.
+>
+> **Hva som er lagt til her (0.4.0):**
+> - Støtte for **flere selskaper** i samme server, med streng isolasjon mellom
+>   dem (én klientnøkkel per Go-klient, eget token-lager per selskap).
+> - **Bokføring**: bilagsutkast, postering til hovedbok, tilbakeføring,
+>   bilagsgodkjenning.
+> - **Hovedbok**: saldobalanse, hovedbokstransaksjoner, kontoplan,
+>   bokføringssperre, MVA-innstillinger.
+> - **Leverandør**: leverandører, leverandørreskontro, inngående faktura.
+> - **Lønn og timeføring.**
+> - **Bank**: kun lesing.
+> - 35 → 103 verktøy.
+>
+> **Sikkerhetsgrensen er flyttet.** Originalen var utkast-only: ingenting den
+> gjorde traff hovedboken. Det er bevisst gitt opp her — bokføring var poenget —
+> og erstattet med en smalere garanti: ingen ekstern effekt, ingen pengeflytting.
+> Les [«The safety boundary in 0.4.0»](#the-safety-boundary-in-040) før du
+> peker denne mot et ekte regnskap.
+>
+> **Kom i gang:** [OPPSETT.md](./OPPSETT.md) — nøkler, konfigurasjon, tilkobling
+> til Claude Code, feilsøking.
 
-An MCP (Model Context Protocol) server that exposes a curated, **draft-only** subset of the PowerOffice Go API to AI assistants such as Claude Code, Cursor, Cline, and GitHub Copilot.
+---
 
-Built by [SmplCo](https://smpl.no/) for use in the demonstration at **Tech-Forum Stavanger, 4 June 2026** with [CMS Kluge Advokatfirma](https://cms.law/en/nor/). This repository is the codebase that the lawyers and audience will be reviewing.
+An MCP (Model Context Protocol) server that exposes a curated subset of the PowerOffice Go API to AI assistants such as Claude Code, Cursor, Cline, and GitHub Copilot. In this fork that subset covers bookkeeping as well as sales; see the safety boundary below for where it stops.
+
+The original was built by [SmplCo](https://smpl.no/) for the demonstration at **Tech-Forum Stavanger, 4 June 2026** with [CMS Kluge Advokatfirma](https://cms.law/en/nor/), where it was reviewed publicly by Norwegian tech lawyers. The sections below are SmplCo's, except where they describe 0.4.0.
 
 ---
 
@@ -21,8 +47,8 @@ Rather than running the experiment behind closed doors and presenting a polished
 
 The server is built around four deliberate constraints:
 
-1. **Draft-only.** The server can create, read, update, and delete *draft* sales orders. It **cannot** send invoices, issue invoices, send payment reminders, or take any action with external effect. A human must log into PowerOffice Go's UI to do that. The relevant tools simply do not exist in the code — see [Why there is no `send_invoice`](#why-there-is-no-send_invoice).
-2. **Human-in-the-loop by architecture, not by promise.** The safety guarantee is enforced by the absence of write-finalisation tools, not by a configuration flag or system prompt.
+1. **No external effect.** The server **cannot** send invoices, issue invoices, send payment reminders, or take any other action visible outside the client's own books. A human must log into PowerOffice Go's UI to do that. The relevant tools simply do not exist in the code — see [Why there is no `send_invoice`](#why-there-is-no-send_invoice). *(In 0.3.0 this constraint was stricter still — draft-only, nothing reaching the general ledger. 0.4.0 posts to the ledger on purpose; see [the safety boundary](#the-safety-boundary-in-040).)*
+2. **Human-in-the-loop by architecture, not by promise.** The safety guarantee is enforced by the absence of the tools, not by a configuration flag or system prompt. Confirm flags on posting and deletion are a second, weaker layer on top — a speed bump, not the guarantee.
 3. **Auditable by default.** Every tool call is appended to an audit log (`~/.poweroffice-mcp/audit.log`) with timestamp, tool name, arguments, outcome and duration. See [Audit logging](#audit-logging).
 4. **No secrets in the repo.** Credentials are passed via environment variables. The repo is safe to share.
 
