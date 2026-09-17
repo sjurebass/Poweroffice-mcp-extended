@@ -1,0 +1,1 @@
+# Poweroffice-mcp-extended
