@@ -145,12 +145,12 @@ export class PowerOfficeClient {
     return this.request<T>("DELETE", path);
   }
 
-  async upload<T>(path: string, form: FormData): Promise<T> {
+  async upload<T>(path: string, form: FormData, method: "POST" | "PUT" = "POST"): Promise<T> {
     await this.rateLimiter.acquire();
     const token = await this.ensureToken();
     const url = `${this.config.apiUrl}/v2${path}`;
     const res = await fetch(url, {
-      method: "POST",
+      method,
       headers: {
         Authorization: `Bearer ${token}`,
         "Ocp-Apim-Subscription-Key": this.config.subscriptionKey,
@@ -160,7 +160,7 @@ export class PowerOfficeClient {
     });
     if (!res.ok) {
       const detail = DEBUG ? `: ${await res.text()}` : "";
-      throw new Error(`PowerOffice upload error ${res.status} POST ${path}${detail}`);
+      throw new Error(`PowerOffice upload error ${res.status} ${method} ${path}${detail}`);
     }
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;

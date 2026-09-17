@@ -89,22 +89,93 @@ What crosses the Atlantic: **nothing**. The model runs on the user's laptop. The
 
 ## What the server can do
 
-A snapshot of registered tools (see `src/tools/` for the full set):
+As of 0.4.0 the server covers sales, purchases, bookkeeping, payroll, time tracking
+and bank *reading*, across one or many Go clients.
 
-| Area | Read | Write (draft-only) |
+| Area | Read | Write |
 |---|---|---|
+| Companies | `list_companies`, `get_integration_info`, `list_partner_clients`, `get_partner_client_users`, `get_partner_client_access_roles` | *(none)* |
 | Customers | `list_customers`, `get_customer`, `search_customers`, `list_contact_persons` | `create_customer`, `create_contact_person`, `archive_customer`, `delete_customer` |
 | Products | `list_products`, `get_product` | `create_product`, `update_product` |
 | Sales orders | `list_invoices`, `get_invoice` | `create_draft_invoice`, `update_draft_invoice`, `delete_draft_invoice`, `add_invoice_attachment` |
 | Outgoing invoices (sent) | `list_outgoing_invoices`, `get_outgoing_invoice` | *(none — strictly read-only)* |
 | Customer ledger | `get_customer_balances`, `get_open_items`, `get_customer_statement` | *(none)* |
+| Suppliers | `list_suppliers`, `get_supplier`, `list_supplier_payment_terms` | `create_supplier`, `update_supplier`, `delete_supplier` |
+| Supplier ledger | `get_supplier_balances`, `get_supplier_open_items`, `get_supplier_statement` | *(none)* |
+| Incoming invoices | `list_incoming_invoices`, `get_incoming_invoice` | *(none — record purchases as supplier-invoice vouchers)* |
+| Voucher drafts | `list_voucher_drafts`, `get_voucher_draft`, `get_voucher_ehf` | `create_voucher_draft`, `update_voucher_draft`, `add_voucher_line`, `update_voucher_line`, `delete_voucher_line`, `delete_voucher_draft`, `add_voucher_page`, `delete_voucher_page`, `submit_voucher_for_approval` |
+| Posting to the ledger | `get_posted_voucher` | `post_voucher`, `reverse_voucher` |
+| Voucher approval | `list_vouchers_for_approval`, `list_voucher_documentation` | `respond_to_voucher_approval`, `replace_voucher_documentation` |
+| General ledger | `get_trial_balance`, `list_account_transactions`, `list_gl_accounts`, `get_gl_account`, `get_financial_settings`, `get_lock_date`, `get_vat_settings`, `get_currency_rate`, `list_sub_ledger_number_series` | `create_gl_account`, `update_gl_account`, `delete_gl_account` |
+| Payroll | `list_pay_items`, `get_pay_item`, `get_payroll_settings`, `list_salary_lines`, `get_salary_line` | `create_salary_line`, `update_salary_line`, `delete_salary_line` |
+| Time tracking | `list_time_records`, `get_time_record`, `list_hour_types`, `list_time_transactions` | `create_time_entry`, `update_time_entry`, `create_time_activity`, `delete_time_record` |
+| Bank | `list_client_bank_accounts`, `get_client_bank_account`, `list_bank_approvers`, `list_bank_transfers`, `get_bank_transfer` | *(none — read-only by design)* |
 | Employees | `list_employees`, `get_employee` | *(none)* |
 | Dimensions | `list_departments`, `list_projects` | `create_project` |
 | Settings | `list_vat_codes`, `list_payment_terms`, `list_branding_themes`, `list_currencies` | *(none)* |
 | Prospects | `list_customer_prospects` | `convert_prospect_to_customer` |
 | Validation | `validate_invoice` | *(read-only)* |
 
----
+### The safety boundary in 0.4.0
+
+0.3.0 was draft-only: nothing it did changed the general ledger. 0.4.0 deliberately
+crosses that line — `post_voucher` books entries, and `create_salary_line` feeds
+payroll — because bookkeeping was the point. The boundary moved; it did not vanish:
+
+- **No external effect.** Nothing is sent to a customer, a supplier or a debt
+  collector. No invoices, no credit notes, no reminders.
+- **No money movement.** `POST`/`DELETE /BankTransfers` and every write to
+  `/ClientBankAccounts` are absent. Bank data is read-only: every API call in
+  `src/tools/bank.ts` is a read.
+- **Posting and deleting require `confirm=true`.** A speed bump against a misread
+  instruction, not a security control. The control is the absence above.
+- **Reversal, not deletion.** A posted voucher is corrected with `reverse_voucher`,
+  which is what Norwegian bookkeeping rules require.
+
+The list of what is deliberately absent is in `src/utils/safety.ts` and is returned
+by `list_companies`, so an assistant can read its own limits.
+
+## Multiple companies (multi-tenant)
+
+PowerOffice issues one **client key per Go client**, and an access token belongs to
+exactly one client key. PowerOffice's own guidance warns that sharing token state
+between clients risks reading or writing the wrong company's books — so isolation
+here is structural rather than careful:
+
+- One `PowerOfficeClient` per configured company, each with its own token cache and
+  rate limiter. Nothing is shared between them.
+- The company is resolved once per tool call and carried in an `AsyncLocalStorage`
+  context for that call's whole async extent. Concurrent calls for different
+  companies cannot observe each other (`tests/registry.test.ts` asserts this under
+  deliberate interleaving).
+- Every tool takes a `client` argument. **Writes must name the company explicitly**
+  whenever more than one is configured — even if a default is set. A read may use
+  the default; booking to the wrong company may not be guessed at.
+- A tool that somehow runs without a resolved company throws rather than falling
+  back to one.
+
+Point `POWEROFFICE_CLIENTS` at a JSON file:
+
+```json
+{
+  "apiUrl": "https://goapi.poweroffice.net",
+  "appKey": "...",
+  "subscriptionKey": "...",
+  "defaultClient": "acme",
+  "clients": {
+    "acme":  { "label": "Acme AS",  "clientKey": "..." },
+    "bolig": { "label": "Bolig AS", "clientKey": "..." }
+  }
+}
+```
+
+Call `list_companies` to see the aliases. The single-client environment variables
+still work unchanged when `POWEROFFICE_CLIENTS` is not set.
+
+If the key belongs to a PowerOffice **partner** (an accounting firm),
+`list_partner_clients` enumerates the clients the partner can reach via
+`/ClientAdmin/Clients`. On an ordinary client key PowerOffice rejects it, which is
+the correct answer rather than a bug.
 
 ## Why there is no `send_invoice`
 
@@ -115,7 +186,7 @@ The architectural choice is:
 - Tools that have **no external visible effect** (drafts, internal records) are exposed.
 - Tools that **create external obligations** (invoices sent to customers, payment reminders, debt collection notices) are not exposed.
 
-A reviewer can verify this by searching the codebase for `send`, `confirm`, `issue`, `finalize` — none of those tools exist. If we wanted to add them later, it would require an explicit code change, a code review, and a deliberate redeployment.
+A reviewer can verify this by searching the codebase for `send`, `issue`, `finalize`, `remind` or `collect` — no such tools exist. (Since 0.4.0 the codebase does contain `post_voucher`, which posts to the general ledger; see the safety boundary above for what that does and does not allow.) If we wanted to add them later, it would require an explicit code change, a code review, and a deliberate redeployment.
 
 ---
 
